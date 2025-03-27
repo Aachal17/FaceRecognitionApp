@@ -6,6 +6,7 @@ using Emgu.CV;
 using Emgu.CV.Structure;
 using Emgu.CV.CvEnum;
 using System.IO;
+using System.Drawing.Drawing2D;
 
 namespace MultiFaceRec
 {
@@ -25,6 +26,7 @@ namespace MultiFaceRec
         string databasePath = Path.Combine(Application.StartupPath, "FaceDatabase");
         string photoFolderPath = @"C:\Users\Aachal\Source\Repos\Face-Detection-Clone\FaceRecProOV\EventImages";
         Image<Gray, byte> lastDetectedFace = null;
+        private bool isDarkTheme = true;
 
         public FrmPrincipal()
         {
@@ -156,7 +158,7 @@ namespace MultiFaceRec
             }
             else
             {
-                pictureBoxMatches.Image = null;
+                matchesGrid.Controls.Clear();
                 MessageBox.Show("No match found.", "Search Result", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
@@ -182,7 +184,7 @@ namespace MultiFaceRec
                             EigenObjectRecognizer recognizer = new EigenObjectRecognizer(trainingImages.ToArray(), labels.ToArray(), 5000, ref termCrit);
                             if (recognizer.Recognize(faceImg) == name)
                             {
-                                matchingImages.Add(img.Clone()); // Clone to keep image in memory
+                                matchingImages.Add(img.Clone());
                                 break;
                             }
                         }
@@ -194,28 +196,52 @@ namespace MultiFaceRec
                 }
             }
 
+            matchesGrid.Controls.Clear();
+
             if (matchingImages.Count > 0)
             {
                 try
                 {
-                    int maxWidth = 100; // Fixed width for thumbnails
-                    int maxHeight = 100; // Fixed height for thumbnails
-                    Bitmap combinedImage = new Bitmap(maxWidth * matchingImages.Count, maxHeight);
-
-                    using (Graphics g = Graphics.FromImage(combinedImage))
+                    int imageSize = 150;
+                    foreach (var img in matchingImages)
                     {
-                        for (int i = 0; i < matchingImages.Count; i++)
+                        Panel imagePanel = new Panel
                         {
-                            using (Bitmap thumbnail = new Bitmap(matchingImages[i].ToBitmap(), maxWidth, maxHeight))
-                            {
-                                g.DrawImage(thumbnail, i * maxWidth, 0);
-                            }
-                            matchingImages[i].Dispose();
-                        }
-                    }
+                            Size = new Size(imageSize + 10, imageSize + 50),
+                            BackColor = Color.Transparent
+                        };
 
-                    pictureBoxMatches.Image?.Dispose();
-                    pictureBoxMatches.Image = combinedImage;
+                        Bitmap originalBitmap = img.ToBitmap(); // Convert to Bitmap once
+                        Bitmap roundedBitmap = CreateRoundedImage(originalBitmap, imageSize, imageSize, 20);
+
+                        PictureBox pb = new PictureBox
+                        {
+                            Size = new Size(imageSize, imageSize),
+                            Image = roundedBitmap,
+                            SizeMode = PictureBoxSizeMode.StretchImage,
+                            Location = new Point(5, 5),
+                            Tag = originalBitmap // Store original Bitmap for download
+                        };
+
+                        Button downloadBtn = new Button
+                        {
+                            Text = "Download",
+                            FlatStyle = FlatStyle.Flat,
+                            BackColor = System.Drawing.Color.FromArgb(88, 165, 255),
+                            ForeColor = Color.White,
+                            Size = new Size(80, 30),
+                            Location = new Point((imageSize - 80) / 2, imageSize + 10),
+                            Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold)
+                        };
+                        downloadBtn.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 80, 30, 10, 10));
+                        downloadBtn.Click += (s, ev) => DownloadImage((Bitmap)pb.Tag, name); // Use Tag for original Bitmap
+
+                        imagePanel.Controls.Add(pb);
+                        imagePanel.Controls.Add(downloadBtn);
+                        matchesGrid.Controls.Add(imagePanel);
+
+                        img.Dispose(); // Dispose Emgu.CV image
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -224,10 +250,81 @@ namespace MultiFaceRec
             }
             else
             {
-                pictureBoxMatches.Image?.Dispose();
-                pictureBoxMatches.Image = null;
                 MessageBox.Show("No matching images found in EventImages.", "Search Result", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
+
+        private Bitmap CreateRoundedImage(Bitmap original, int width, int height, int cornerRadius)
+        {
+            Bitmap roundedImage = new Bitmap(width, height);
+            using (Graphics g = Graphics.FromImage(roundedImage))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                GraphicsPath path = new GraphicsPath();
+                path.AddArc(0, 0, cornerRadius, cornerRadius, 180, 90);
+                path.AddArc(width - cornerRadius, 0, cornerRadius, cornerRadius, 270, 90);
+                path.AddArc(width - cornerRadius, height - cornerRadius, cornerRadius, cornerRadius, 0, 90);
+                path.AddArc(0, height - cornerRadius, cornerRadius, cornerRadius, 90, 90);
+                path.CloseFigure();
+
+                g.SetClip(path);
+                g.DrawImage(original, 0, 0, width, height);
+            }
+            return roundedImage;
+        }
+
+        private void DownloadImage(Bitmap image, string name)
+        {
+            using (SaveFileDialog sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "BMP Files (*.bmp)|*.bmp";
+                sfd.FileName = $"{name}_{DateTime.Now.Ticks}.bmp";
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    image.Save(sfd.FileName); // Save the Bitmap directly
+                    MessageBox.Show("Image downloaded successfully!", "Download", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+        }
+
+        private void ToggleTheme_Click(object sender, EventArgs e)
+        {
+            if (isDarkTheme)
+            {
+                this.BackColor = System.Drawing.Color.FromArgb(240, 240, 245);
+                panelTrain.BackColor = System.Drawing.Color.White;
+                panelResults.BackColor = System.Drawing.Color.White;
+                panelMatches.BackColor = System.Drawing.Color.White;
+                matchesGrid.BackColor = System.Drawing.Color.White;
+                imageBox1.BackColor = System.Drawing.Color.FromArgb(240, 240, 245);
+                imageBoxFrameGrabber.BackColor = System.Drawing.Color.FromArgb(240, 240, 245);
+                textBox1.BackColor = System.Drawing.Color.White;
+                textBox1.ForeColor = System.Drawing.Color.Black;
+                label1.ForeColor = System.Drawing.Color.Black;
+                label2.ForeColor = System.Drawing.Color.Black;
+                label5.ForeColor = System.Drawing.Color.Black;
+                toggleTheme.Text = "Dark";
+            }
+            else
+            {
+                this.BackColor = System.Drawing.Color.FromArgb(34, 39, 46);
+                panelTrain.BackColor = System.Drawing.Color.FromArgb(45, 51, 59);
+                panelResults.BackColor = System.Drawing.Color.FromArgb(45, 51, 59);
+                panelMatches.BackColor = System.Drawing.Color.FromArgb(45, 51, 59);
+                matchesGrid.BackColor = System.Drawing.Color.FromArgb(45, 51, 59);
+                imageBox1.BackColor = System.Drawing.Color.FromArgb(34, 39, 46);
+                imageBoxFrameGrabber.BackColor = System.Drawing.Color.FromArgb(34, 39, 46);
+                textBox1.BackColor = System.Drawing.Color.FromArgb(45, 51, 59);
+                textBox1.ForeColor = System.Drawing.Color.White;
+                label1.ForeColor = System.Drawing.Color.FromArgb(200, 200, 200);
+                label2.ForeColor = System.Drawing.Color.FromArgb(200, 200, 200);
+                label5.ForeColor = System.Drawing.Color.FromArgb(200, 200, 200);
+                toggleTheme.Text = "Light";
+            }
+            isDarkTheme = !isDarkTheme;
+        }
+
+        [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        private static extern IntPtr CreateRoundRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
     }
 }
